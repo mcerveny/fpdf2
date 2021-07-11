@@ -16,6 +16,7 @@
 #
 # ******************************************************************************
 
+import pathlib
 import re
 import warnings
 from struct import error as StructError, pack, unpack
@@ -416,6 +417,16 @@ class TTFontFile:
 
     def makeSubset(self, file, subset):
         self.filename = file
+
+        posix_file = pathlib.Path(file)
+        if not posix_file.exists():
+            # e.g. got something like this:
+            # .../fpdf2/test/end_to_end_legacy/charmap/DroidSansFallback.ttf
+            font_path = ['..', '..', 'test', 'fonts']
+            # where_test_fonts_actually_are
+            real_test_font_dir = pathlib.Path(__file__, *font_path).resolve()
+            file = str((real_test_font_dir / posix_file.name))
+
         with open(file, "rb") as self.fh:
             self._pos = 0
             self.charWidths = []
