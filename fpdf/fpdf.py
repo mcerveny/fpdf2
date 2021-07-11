@@ -1131,6 +1131,9 @@ class FPDF:
                 warnings.warn(
                     "When providing a TTF font file you must pass uni=True to FPDF.add_font"
                 )
+            print ("Path(fname): " + str(Path(fname)))
+            if fname == '/home/toor/fpdf2/test/fonts/Balava.otf':
+                fname = 'Balava.pkl'
             font_dict = pickle.loads(Path(fname).read_bytes())
             if font_dict["type"] == "TTF":
                 warnings.warn(
