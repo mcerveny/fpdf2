@@ -749,6 +749,7 @@ class SVGObject:
         Returns:
             A converted `SVGObject`.
         """
+        # pylint: disable=unspecified-encoding
         with open(filename, "r") as svgfile:
             return cls(svgfile.read(), *args, **kwargs)
 

@@ -4,6 +4,7 @@ import copy
 import enum
 import decimal
 import math
+from .graphics_cache import GraphicsCache
 from typing import Optional, NamedTuple, Union
 
 __pdoc__ = {"force_nodocument": False}
@@ -25,10 +26,6 @@ def force_document(item):
 # type alias:
 Number = Union[int, float, decimal.Decimal]
 
-_global_style_registry = {}
-# this is just a reverse mapping of the above
-_global_style_name_lookup = {}
-
 
 # this maybe should live in fpdf.syntax
 class Raw(str):
@@ -45,38 +42,22 @@ EOL_CHARS = frozenset({"\n", "\r"})
 """Characters PDF considers to mark the end of a line."""
 
 
-def get_style_dict_by_name(name):
-    """
-    Look up the named style dictionary.
-
-    Args:
-        name (str): the name of the dictionary to look up. This should be a name taken
-            from the list of style dictionaries returned by `GraphicsContext.render`.
-
-    Raises:
-        KeyError: if no dictionary with the given name exists.
-    """
-    return _global_style_name_lookup[name]
+def _next_global_style_name(next_number):
+    return Name(f"GS{next_number}")
 
 
-def _new_global_style_name():
-    return Name(f"GS{len(_global_style_registry)}")
-
-
-def _get_or_set_style_dict(style):
+def _get_or_set_style_dict(style, graphics_cache):
     sdict = style.to_pdf_dict()
 
     if not sdict:
         return None
 
-    try:
-        return _global_style_registry[sdict]
-    except KeyError:
-        pass
+    cached = graphics_cache.lookup_name_from_style(sdict)
+    if cached is not None:
+        return cached
 
-    name = _new_global_style_name()
-    _global_style_registry[sdict] = name
-    _global_style_name_lookup[name] = sdict
+    name = _next_global_style_name(graphics_cache.count_saved_styles())
+    graphics_cache.new_style_with_name(sdict, name)
 
     return name
 
@@ -166,6 +147,7 @@ def render_pdf_primitive(primitive):
     return Raw(output)
 
 
+_global_style_registry = GraphicsCache.INITIALIZATION_DATA["style_to_name"]
 _global_style_registry[render_pdf_primitive({Name("Type"): Name("ExtGState")})] = None
 
 
@@ -3187,8 +3169,9 @@ class DrawingContext:
     is correctly scaled).
     """
 
-    def __init__(self):
+    def __init__(self, cache):
         self._subitems = []
+        self.cache = cache
 
     def add_item(self, item, _copy=True):
         """
@@ -3303,8 +3286,9 @@ class PaintedPath:
     primitive path elements and `GraphicsContext`.
     """
 
-    def __init__(self, x=0, y=0):
-        self._root_graphics_context = GraphicsContext()
+    def __init__(self, x=0, y=0, cache=None):
+        self.cache = cache
+        self._root_graphics_context = GraphicsContext(cache)
         self._graphics_context = self._root_graphics_context
 
         self._closed = True
@@ -3371,7 +3355,7 @@ class PaintedPath:
     @contextmanager
     def _new_graphics_context(self, _attach=True):
         old_graphics_context = self._graphics_context
-        new_graphics_context = GraphicsContext()
+        new_graphics_context = GraphicsContext(self.cache)
         self._graphics_context = new_graphics_context
         try:
             yield new_graphics_context
@@ -3907,8 +3891,9 @@ class ClippingPath(PaintedPath):
 
 
 class GraphicsContext:
-    def __init__(self):
+    def __init__(self, cache=None):
         self.style = GraphicsStyle()
+        self.cache = cache if cache is not None else GraphicsCache()
         self.path_items = []
 
         self._transform = None
@@ -4018,7 +4003,7 @@ class GraphicsContext:
                 else:
                     debug_stream.write("\n")
 
-            sdict = _get_or_set_style_dict(self.style)
+            sdict = _get_or_set_style_dict(self.style, self.cache)
 
             if sdict is not None:
                 path_gsds[sdict] = None

@@ -59,6 +59,7 @@ from .syntax import (
     iobj_ref as pdf_ref,
     DestinationXYZ,
 )
+from .graphics_cache import GraphicsCache
 
 LOGGER = logging.getLogger(__name__)
 HERE = Path(__file__).resolve().parent
@@ -229,7 +230,12 @@ class FPDF:
     MARKDOWN_UNDERLINE_MARKER = "--"
 
     def __init__(
-        self, orientation="portrait", unit="mm", format="A4", font_cache_dir=True
+        self,
+        orientation="portrait",
+        unit="mm",
+        format="A4",
+        font_cache_dir=True,
+        pre_initialized_graphics_cache=None,
     ):
         """
         Args:
@@ -339,6 +345,9 @@ class FPDF:
         self._current_draw_context = None
 
         self._used_graphics_state_dicts = OrderedDict()
+        self.graphics_cache = pre_initialized_graphics_cache
+        if self.graphics_cache is None:
+            self.graphics_cache = GraphicsCache()
 
     @property
     def unifontsubset(self):
@@ -881,12 +890,13 @@ class FPDF:
                 `io.StringIO`.
         """
 
+        # pylint: disable=no-else-raise
         if self._current_draw_context is not None:
             raise FPDFException(
                 "cannot create a drawing context while one is already open"
             )
         else:
-            context = drawing.DrawingContext()
+            context = drawing.DrawingContext(self.graphics_cache)
             self._current_draw_context = context
             try:
                 yield context
@@ -903,6 +913,7 @@ class FPDF:
 
             self._used_graphics_state_dicts.update(gsdicts)
             self._out(rendered)
+            # pylint: disable=consider-using-max-builtin
             if self.pdf_version < "1.4":
                 self.pdf_version = "1.4"
 
@@ -3073,7 +3084,7 @@ class FPDF:
 
     def _put_graphics_state_dicts(self):
         for name in self._used_graphics_state_dicts:
-            sdict = drawing.get_style_dict_by_name(name)
+            sdict = self.graphics_cache.lookup_style_from_name(name)
 
             self._newobj()
             self._used_graphics_state_dicts[name] = self.n

@@ -1,3 +1,4 @@
+# pylint: skip-file
 from decimal import Decimal
 from io import StringIO
 from pathlib import Path
